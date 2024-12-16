@@ -14,7 +14,7 @@ public class UploudCSV {
     private static final String DB_USER = "root";
     private static final String DB_PASSWORD = "123321";
     private static final String INSERT_QUERY = """
-        INSERT INTO terminais (nome, municipio, localizacao)
+        INSERT INTO terminal (nome, municipio, localizacao)
         VALUES (?, ?, ST_GeomFromText(?, 4326))
     """;
 
@@ -36,7 +36,7 @@ public class UploudCSV {
         try (
                 InputStream csvStream = UploudCSV.class.getClassLoader().getResourceAsStream(CSV_FILE_PATH);
                 Reader reader = new InputStreamReader(csvStream, "UTF-8");
-                CSVParser csvParser = new CSVParser(reader, createCSVFormat())
+                CSVParser csvParser = new CSVParser(reader, criarFormatoCSV())
         ) {
             for (CSVRecord record : csvParser) {
                 processRecord(conn, record);
@@ -44,7 +44,7 @@ public class UploudCSV {
         }
     }
 
-    private static CSVFormat createCSVFormat() {
+    private static CSVFormat criarFormatoCSV() {
         return CSVFormat.Builder.create()
                 .setHeader()
                 .setDelimiter(';')
@@ -55,10 +55,10 @@ public class UploudCSV {
 
     private static void processRecord(Connection conn, CSVRecord record) {
         try (PreparedStatement stmt = conn.prepareStatement(INSERT_QUERY)) {
-            String nome = processNome(record.get("nome"));
-            String municipio = processMunicipio(record.get("municipio"));
-            double latitude = processLatitude(record.get("Latitude"));
-            double longitude = processLongitude(record.get("Longitude"));
+            String nome = processarNome(record.get("nome"));
+            String municipio = processarMunicipio(record.get("municipio"));
+            double latitude = processarLatitude(record.get("Latitude"));
+            double longitude = processarLongitude(record.get("Longitude"));
 
             stmt.setString(1, nome);
             stmt.setString(2, municipio);
@@ -70,19 +70,19 @@ public class UploudCSV {
         }
     }
 
-    private static String processNome(String nome) {
+    private static String processarNome(String nome) {
         return removeAcentos(nome.replaceAll("^\"|\"$", ""));
     }
 
-    private static String processMunicipio(String municipio) {
+    private static String processarMunicipio(String municipio) {
         return removeAcentos(municipio.trim().replaceAll("^\"|\"$", ""));
     }
 
-    private static double processLatitude(String latitude) {
+    private static double processarLatitude(String latitude) {
         return Double.parseDouble(latitude.replace(",", ".").replaceAll("^\"|\"$", ""));
     }
 
-    private static double processLongitude(String longitude) {
+    private static double processarLongitude(String longitude) {
         return Double.parseDouble(longitude.replace(",", ".").replaceAll("^\"|\"$", ""));
     }
 }
