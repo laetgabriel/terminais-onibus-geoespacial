@@ -3,60 +3,86 @@ package org.acgproject;
 import java.io.*;
 import java.sql.*;
 import java.util.Locale;
-
 import org.apache.commons.csv.*;
 
 import static org.acgproject.ProcessCSV.removeAcentos;
 
 public class UploudCSV {
+
+    private static final String CSV_FILE_PATH = "basededados/terminais-de-onibus-al-ibge-2022.csv";
+    private static final String DB_URL = "jdbc:mysql://localhost:3306/terminais_onibus";
+    private static final String DB_USER = "root";
+    private static final String DB_PASSWORD = "123321";
+    private static final String INSERT_QUERY = """
+        INSERT INTO terminais (nome, municipio, localizacao)
+        VALUES (?, ?, ST_GeomFromText(?, 4326))
+    """;
+
     public static void main(String[] args) {
         Locale.setDefault(Locale.US);
-        String csvFilePath = "basededados/terminais-de-onibus-al-ibge-2022.csv";
-
-        String dbUrl = "jdbc:mysql://localhost:3306/terminais_onibus";
-        String user = "root";
-        String password = "123321";
-
-        String insertQuery = """
-            INSERT INTO terminais (nome, municipio, localizacao)
-            VALUES (?, ?, ST_GeomFromText(?, 4326))
-        """;
-
-        try (
-                Connection conn = DriverManager.getConnection(dbUrl, user, password);
-                PreparedStatement stmt = conn.prepareStatement(insertQuery);
-
-                InputStream csvStream = UploudCSV.class.getClassLoader().getResourceAsStream(csvFilePath);
-                Reader reader = new InputStreamReader(csvStream, "UTF-8");
-
-                CSVParser csvParser = new CSVParser(reader,
-                        CSVFormat.Builder.create()
-                                .setHeader()
-                                .setDelimiter(';')
-                                .setTrim(true)
-                                .setQuote(null)
-                                .build()
-                )
-        ) {
-            for (CSVRecord record : csvParser) {
-                try {
-                    String nome = removeAcentos(record.get("nome").replaceAll("^\"|\"$", ""));
-                    String municipio = removeAcentos(record.get("municipio").trim().replaceAll("^\"|\"$", ""));
-                    double latitude = Double.parseDouble(record.get("Latitude").replace(",", ".").replaceAll("^\"|\"$", ""));
-                    double longitude = Double.parseDouble(record.get("Longitude").replace(",", ".").replaceAll("^\"|\"$", ""));
-
-                    stmt.setString(1, nome);
-                    stmt.setString(2, municipio);
-                    stmt.setString(3, String.format("POINT(%f %f)", latitude, longitude));
-
-                    stmt.executeUpdate();
-                } catch (NumberFormatException | SQLException e) {
-                    System.err.printf("Erro ao processar registro: %s. Erro: %s%n", record, e.getMessage());
-                }
-            }
+        try (Connection conn = getDatabaseConnection()) {
+            processCSV(conn);
         } catch (Exception e) {
             System.err.println("Erro ao importar dados: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    public static Connection getDatabaseConnection() throws SQLException {
+        return DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
+    }
+
+    private static void processCSV(Connection conn) throws IOException, SQLException {
+        try (
+                InputStream csvStream = UploudCSV.class.getClassLoader().getResourceAsStream(CSV_FILE_PATH);
+                Reader reader = new InputStreamReader(csvStream, "UTF-8");
+                CSVParser csvParser = new CSVParser(reader, createCSVFormat())
+        ) {
+            for (CSVRecord record : csvParser) {
+                processRecord(conn, record);
+            }
+        }
+    }
+
+    private static CSVFormat createCSVFormat() {
+        return CSVFormat.Builder.create()
+                .setHeader()
+                .setDelimiter(';')
+                .setTrim(true)
+                .setQuote(null)
+                .build();
+    }
+
+    private static void processRecord(Connection conn, CSVRecord record) {
+        try (PreparedStatement stmt = conn.prepareStatement(INSERT_QUERY)) {
+            String nome = processNome(record.get("nome"));
+            String municipio = processMunicipio(record.get("municipio"));
+            double latitude = processLatitude(record.get("Latitude"));
+            double longitude = processLongitude(record.get("Longitude"));
+
+            stmt.setString(1, nome);
+            stmt.setString(2, municipio);
+            stmt.setString(3, String.format("POINT(%f %f)", latitude, longitude));
+
+            stmt.executeUpdate();
+        } catch (NumberFormatException | SQLException e) {
+            System.err.printf("Erro ao processar registro: %s. Erro: %s%n", record, e.getMessage());
+        }
+    }
+
+    private static String processNome(String nome) {
+        return removeAcentos(nome.replaceAll("^\"|\"$", ""));
+    }
+
+    private static String processMunicipio(String municipio) {
+        return removeAcentos(municipio.trim().replaceAll("^\"|\"$", ""));
+    }
+
+    private static double processLatitude(String latitude) {
+        return Double.parseDouble(latitude.replace(",", ".").replaceAll("^\"|\"$", ""));
+    }
+
+    private static double processLongitude(String longitude) {
+        return Double.parseDouble(longitude.replace(",", ".").replaceAll("^\"|\"$", ""));
     }
 }
